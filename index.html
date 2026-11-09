@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>แชร์การ์ด Defect เข้า LINE</title>
+  <title>กำลังเปิด LINE...</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
@@ -11,53 +11,46 @@
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       -webkit-tap-highlight-color: transparent;
+      user-select: none;
     }
   </style>
 </head>
-<body class="bg-slate-100 min-h-screen flex flex-col items-center justify-between p-4">
+<body class="bg-white min-h-screen flex flex-col items-center justify-center p-4">
 
-  <!-- Header -->
-  <header class="w-full max-w-md text-center py-2">
-    <div class="inline-flex items-center space-x-2 bg-white px-4 py-1.5 rounded-full shadow-xs border border-slate-200">
-      <i class="fab fa-line text-emerald-500 text-lg"></i>
-      <span class="text-xs font-semibold text-slate-700">ระบบแชร์การ์ดแจ้งเตือน (ฟรี 100% 0 โควต้า)</span>
-    </div>
-  </header>
-
-  <!-- Main Container -->
-  <main class="w-full max-w-md flex-1 flex flex-col justify-center items-center my-4">
-    <!-- Status Card -->
-    <div id="statusBox" class="w-full bg-white rounded-2xl shadow-lg border border-slate-100 p-6 text-center transition-all">
-      <div id="spinner" class="inline-block animate-spin rounded-full h-10 w-10 border-4 border-emerald-500 border-t-transparent mb-3"></div>
-      <div id="statusIcon" class="hidden text-4xl mb-2"></div>
-      <h2 id="statusTitle" class="text-base font-bold text-slate-800">กำลังเชื่อมต่อ LINE...</h2>
-      <p id="statusDesc" class="text-xs text-slate-500 mt-1">กรุณารอสักครู่ ระบบกำลังเตรียมการ์ด Flex สำหรับส่งเข้ากลุ่ม</p>
-
-      <!-- Action Buttons -->
-      <div id="actionButtons" class="mt-5 space-y-2 hidden">
-        <button id="btnShareAgain" onclick="triggerShareTargetPicker()" class="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-bold rounded-xl shadow-md transition flex items-center justify-center space-x-2">
-          <i class="fab fa-line text-xl"></i>
-          <span>แตะเพื่อเลือกห้องแชตส่งการ์ด</span>
-        </button>
-        <button onclick="safeCloseWindow()" class="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 active:scale-98 text-slate-600 font-semibold rounded-xl transition text-sm">
-          ปิดหน้าต่างนี้
-        </button>
+  <!-- Minimal Instant Loader (Visible while launching LINE picker) -->
+  <div id="loaderBox" class="flex flex-col items-center justify-center text-center">
+    <div class="relative w-16 h-16 flex items-center justify-center mb-3">
+      <div class="absolute inset-0 rounded-full border-4 border-emerald-200 animate-ping opacity-60"></div>
+      <div class="w-14 h-14 bg-emerald-500 rounded-full flex items-center justify-center shadow-lg">
+        <i class="fab fa-line text-white text-3xl"></i>
       </div>
     </div>
+    <div id="loaderText" class="text-sm font-semibold text-slate-600 tracking-wide animate-pulse">กำลังเปิด LINE...</div>
+  </div>
 
-    <!-- Card Preview Section -->
-    <div id="previewContainer" class="w-full mt-4 hidden">
-      <div class="text-center text-xs font-semibold text-slate-400 mb-2">ตัวอย่างการ์ดที่จะส่งเข้ากลุ่ม (Flex Card):</div>
-      <div id="cardPreview" class="bg-white rounded-2xl shadow border border-slate-200 overflow-hidden text-left">
-        <!-- Dynamic Preview Content -->
-      </div>
+  <!-- Fallback / Retry UI (Hidden by default, only shown if user cancels or error occurs) -->
+  <div id="fallbackBox" class="w-full max-w-sm hidden flex-col items-center text-center">
+    <div id="statusIcon" class="text-4xl mb-2">💬</div>
+    <h2 id="statusTitle" class="text-base font-bold text-slate-800">แตะเพื่อเลือกห้องแชต</h2>
+    <p id="statusDesc" class="text-xs text-slate-500 mt-1 mb-4">แตะปุ่มด้านล่างเพื่อเลือกกลุ่มหรือเพื่อนที่จะส่งการ์ด Flex</p>
+
+    <!-- Action Button -->
+    <div class="w-full space-y-2 mb-4">
+      <button onclick="triggerShareTargetPicker()" class="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-bold rounded-xl shadow-md transition flex items-center justify-center space-x-2">
+        <i class="fab fa-line text-xl"></i>
+        <span>แตะเพื่อเลือกเพื่อน / ส่งการ์ดอีกครั้ง</span>
+      </button>
+      <button onclick="safeCloseWindow()" class="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 active:scale-98 text-slate-600 font-semibold rounded-xl transition text-sm">
+        ปิดหน้านี้
+      </button>
     </div>
-  </main>
 
-  <!-- Footer -->
-  <footer class="w-full max-w-md text-center py-2 text-[11px] text-slate-400">
-    Defect Management LIFF Share Gateway • 2026
-  </footer>
+    <!-- Live Card Preview -->
+    <div id="previewContainer" class="w-full hidden">
+      <div class="text-center text-[11px] font-semibold text-slate-400 mb-1.5">ตัวอย่างการ์ด Flex:</div>
+      <div id="cardPreview" class="bg-white rounded-2xl shadow border border-slate-200 overflow-hidden text-left"></div>
+    </div>
+  </div>
 
   <script>
     const LIFF_ID = "2012379010-S2Z3XGF9";
@@ -109,9 +102,7 @@
       };
     }
 
-    // 1. Comprehensive Parameter Parser (Direct, liff.state, or Hash)
     function parseParameters() {
-      // Step A: Check standard location.search
       const urlParams = new URLSearchParams(window.location.search);
       let dataRaw = urlParams.get("data");
       if (dataRaw) {
@@ -119,7 +110,6 @@
         if (res && (res.id || res.code)) return res;
       }
 
-      // Step B: Check liff.state parameter (LINE encapsulates query params here before init)
       const liffState = urlParams.get("liff.state");
       if (liffState) {
         try {
@@ -139,7 +129,6 @@
         }
       }
 
-      // Step C: Check location.hash
       if (window.location.hash) {
         const hashParams = extractParamMap(window.location.hash);
         if (hashParams) {
@@ -153,14 +142,12 @@
         }
       }
 
-      // Step D: Check direct individual parameters (?id=29&tab=Main...)
       const directFields = extractFields(urlParams);
       if (directFields) return directFields;
 
       return null;
     }
 
-    // 2. Build LINE Flex Card JSON Payload
     function createFlexCard(item) {
       const prefix = item.code || (item.tab === "Main" ? "M-" : item.tab === "Control" ? "C-" : item.tab === "Trip" ? "T-" : "") + item.id;
       const st = String(item.status || "");
@@ -180,24 +167,23 @@
           statusEmoji = "🔴";
         }
       } else if (st.includes("แก้ไขแล้ว") || st.includes("รอการตรวจสอบ") || st.includes("รอตรวจ") || st.includes("ปิดงาน")) {
-        headerBgColor = "#eab308"; // สีเหลือง (Yellow #eab308 เหมือนบอท B4)
+        headerBgColor = "#eab308"; // Yellow gold (เหมือนบอท B4)
         headerTitle = "🔧 แก้ไขแล้วรอตรวจสอบ";
         statusEmoji = "🟡";
       } else if (st.includes("ปรับปรุง")) {
-        headerBgColor = "#dc2626"; // แดง
+        headerBgColor = "#dc2626"; // Red
         headerTitle = "⚠️ ตรวจสอบงาน (ปรับปรุง)";
         statusEmoji = "🔴";
       } else if (st.includes("ผ่าน") || st.includes("เรียบร้อย")) {
-        headerBgColor = "#16a34a"; // เขียว
+        headerBgColor = "#16a34a"; // Green
         headerTitle = "✅ ตรวจสอบงาน (ผ่าน)";
         statusEmoji = "🟢";
       } else if (st.includes("ยกเลิก")) {
-        headerBgColor = "#4b5563"; // เทา
+        headerBgColor = "#4b5563"; // Gray
         headerTitle = "✖️ ตรวจสอบงาน (ยกเลิกงาน)";
         statusEmoji = "⚪";
       }
 
-      // Convert Google Drive Links to Direct Images if necessary
       const formatImageUrl = (url) => {
         if (!url) return "";
         let u = String(url).trim();
@@ -342,7 +328,6 @@
       };
     }
 
-    // 3. Render In-Page Preview
     function renderPreview(item, flex) {
       const container = document.getElementById("previewContainer");
       const preview = document.getElementById("cardPreview");
@@ -416,27 +401,21 @@
       container.classList.remove("hidden");
     }
 
-    // 4. Update UI Status Box
-    function setUIState(state, title, desc, iconHtml) {
-      const spinner = document.getElementById("spinner");
+    function showFallback(icon, title, desc) {
+      const loaderBox = document.getElementById("loaderBox");
+      const fallbackBox = document.getElementById("fallbackBox");
       const statusIcon = document.getElementById("statusIcon");
       const statusTitle = document.getElementById("statusTitle");
       const statusDesc = document.getElementById("statusDesc");
-      const actionButtons = document.getElementById("actionButtons");
 
-      if (state === "loading") {
-        spinner.classList.remove("hidden");
-        statusIcon.classList.add("hidden");
-        actionButtons.classList.add("hidden");
-      } else {
-        spinner.classList.add("hidden");
-        statusIcon.classList.remove("hidden");
-        actionButtons.classList.remove("hidden");
+      if (loaderBox) loaderBox.style.display = "none";
+      if (fallbackBox) {
+        fallbackBox.classList.remove("hidden");
+        fallbackBox.style.display = "flex";
       }
-
-      if (iconHtml) statusIcon.innerHTML = iconHtml;
-      if (title) statusTitle.innerText = title;
-      if (desc) statusDesc.innerText = desc;
+      if (statusIcon && icon) statusIcon.innerText = icon;
+      if (statusTitle && title) statusTitle.innerText = title;
+      if (statusDesc && desc) statusDesc.innerText = desc;
     }
 
     function safeCloseWindow() {
@@ -447,26 +426,18 @@
       }
     }
 
-    // 5. Trigger Share Target Picker
     async function triggerShareTargetPicker() {
       if (!defectData || !flexCardPayload) {
-        alert("ไม่พบข้อมูลการ์ด Defect สำหรับแชร์");
+        showFallback("⚠️", "ไม่พบข้อมูลงาน", "กรุณากดแชร์จากการ์ดงานใน Defect Web App ครับ");
         return;
       }
 
-      if (typeof liff === "undefined") {
-        alert("ไม่สามารถติดต่อ LINE SDK ได้");
-        return;
-      }
-
-      if (!liff.isApiAvailable("shareTargetPicker")) {
-        setUIState("error", "ไม่รองรับ Share Target Picker", "กรุณาเปิดลิงก์นี้ในแอปพลิเคชัน LINE บนมือถือเพื่อแชร์การ์ด", "⚠️");
+      if (typeof liff === "undefined" || !liff.isApiAvailable("shareTargetPicker")) {
+        showFallback("📱", "กรุณาเปิดในแอป LINE", "ระบบแชร์การ์ด Flex ต้องเปิดผ่านแอปพลิเคชัน LINE บนมือถือเท่านั้นครับ");
         return;
       }
 
       try {
-        setUIState("loading", "กำลังเปิดหน้าเลือกห้องแชต...", "กรุณาเลือกเพื่อนหรือกลุ่มที่ต้องการส่งการ์ดแจ้งเตือน", "");
-        
         const altText = (flexCardPayload.header.contents[0].text || "แจ้งเตือนงาน Defect") + ": " + (defectData.code || defectData.id);
         const res = await liff.shareTargetPicker([
           {
@@ -477,38 +448,29 @@
         ]);
 
         if (res) {
-          setUIState("success", "แชร์การ์ดเข้าห้องแชตสำเร็จ! 🎉", "ส่งการ์ดแจ้งเตือนเข้าห้องแชต LINE เรียบร้อยแล้ว (ไม่เสียโควต้าข้อความ)", "✅");
-          setTimeout(() => {
-            safeCloseWindow();
-          }, 1800);
+          // Sent successfully! Close window instantly!
+          safeCloseWindow();
         } else {
-          setUIState("idle", "ยกเลิกการแชร์", "คุณสามารถแตะปุ่มด้านล่างเพื่อเลือกห้องแชตและส่งการ์ดได้อีกครั้ง", "💬");
+          // User closed or cancelled: show friendly retry UI
+          showFallback("💬", "ยกเลิกการส่งการ์ด", "แตะปุ่มด้านล่างเพื่อเลือกห้องแชตและส่งการ์ดใหม่อีกครั้ง");
         }
       } catch (err) {
         console.error("shareTargetPicker Error:", err);
-        setUIState("error", "เกิดข้อผิดพลาดในการแชร์", err.message || String(err), "❌");
+        showFallback("❌", "การส่งขัดข้อง", err.message || String(err));
       }
     }
 
-    // 6. Main Initialization Flow
     async function init() {
       try {
-        setUIState("loading", "กำลังเชื่อมต่อ LINE...", "เตรียมพร้อมสำหรับการส่งการ์ด Flex", "");
-
-        // Step 1: Pre-parse before liff.init (in case already decoded)
         defectData = parseParameters();
-
-        // Step 2: Initialize LIFF (unwraps liff.state automatically)
         await liff.init({ liffId: LIFF_ID });
 
-        // Step 3: If not found earlier, parse again now that LIFF decoded liff.state
         if (!defectData) {
           defectData = parseParameters();
         }
 
-        // If still not found, check if defect ID is present
         if (!defectData || (!defectData.id && !defectData.code)) {
-          setUIState("error", "ไม่พบข้อมูลงาน", "กรุณากดแชร์จากการ์ดงานใน Defect Web App โดยตรง เพื่อส่งการ์ดเข้า LINE ครับ", "⚠️");
+          showFallback("⚠️", "ไม่พบข้อมูลงาน", "กรุณากดแชร์จากการ์ดงานใน Defect Web App ครับ");
           return;
         }
 
@@ -516,29 +478,24 @@
         renderPreview(defectData, flexCardPayload);
 
         if (!liff.isLoggedIn()) {
-          setUIState("loading", "กำลังเข้าสู่ระบบ LINE...", "ระบบจะนำท่านเข้าสู่ระบบเพื่ออนุญาตการแชร์การ์ด", "");
           liff.login();
           return;
         }
 
         if (!liff.isApiAvailable("shareTargetPicker")) {
-          setUIState("error", "กรุณาเปิดในแอป LINE", "ระบบแชร์การ์ด Flex ต้องเปิดผ่านแอปพลิเคชัน LINE บนมือถือเท่านั้น", "📱");
+          showFallback("📱", "กรุณาเปิดในแอป LINE", "ระบบแชร์การ์ด Flex ต้องเปิดผ่านแอปพลิเคชัน LINE บนมือถือเท่านั้นครับ");
           return;
         }
 
-        // Auto trigger Share Target Picker on first load
+        // Trigger Share Target Picker immediately with 0 delay!
         if (!hasAttemptedAutoShare) {
           hasAttemptedAutoShare = true;
-          setTimeout(() => {
-            triggerShareTargetPicker();
-          }, 50);
-        } else {
-          setUIState("idle", "พร้อมแชร์การ์ด", "แตะปุ่มด้านล่างเพื่อเลือกกลุ่มหรือเพื่อนใน LINE", "📋");
+          triggerShareTargetPicker();
         }
 
       } catch (err) {
         console.error("Init Error:", err);
-        setUIState("error", "การเชื่อมต่อขัดข้อง", err.message || String(err), "🚨");
+        showFallback("🚨", "การเชื่อมต่อขัดข้อง", err.message || String(err));
       }
     }
 
