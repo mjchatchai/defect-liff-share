@@ -171,24 +171,28 @@
 
       if (item.tab === "Trip") {
         if (st.includes("ปลด") || st.includes("แก้ไข") || st.includes("ผ่าน")) {
-          headerBgColor = "#10b981";
+          headerBgColor = "#059669";
           headerTitle = "✅ ปลดทริปเรียบร้อยแล้ว";
           statusEmoji = "🟢";
         } else {
-          headerBgColor = "#f59e0b";
+          headerBgColor = "#dc2626";
           headerTitle = "⚡ แจ้งเปิดงาน Defect (Trip)";
           statusEmoji = "🔴";
         }
-      } else if (st.includes("แก้ไขแล้ว") || st.includes("รอการตรวจสอบ") || st.includes("รอตรวจ")) {
-        headerBgColor = "#3b82f6"; // Blue
+      } else if (st.includes("แก้ไขแล้ว") || st.includes("รอการตรวจสอบ") || st.includes("รอตรวจ") || st.includes("ปิดงาน")) {
+        headerBgColor = "#eab308"; // สีเหลือง (Yellow #eab308 เหมือนบอท B4)
         headerTitle = "🔧 แก้ไขแล้วรอตรวจสอบ";
         statusEmoji = "🟡";
-      } else if (st.includes("ผ่าน") || st.includes("ปิดงาน") || st.includes("เรียบร้อย")) {
-        headerBgColor = "#10b981"; // Green
-        headerTitle = "✅ ตรวจสอบงานผ่าน Web App";
+      } else if (st.includes("ปรับปรุง")) {
+        headerBgColor = "#dc2626"; // แดง
+        headerTitle = "⚠️ ตรวจสอบงาน (ปรับปรุง)";
+        statusEmoji = "🔴";
+      } else if (st.includes("ผ่าน") || st.includes("เรียบร้อย")) {
+        headerBgColor = "#16a34a"; // เขียว
+        headerTitle = "✅ ตรวจสอบงาน (ผ่าน)";
         statusEmoji = "🟢";
       } else if (st.includes("ยกเลิก")) {
-        headerBgColor = "#6b7280"; // Gray
+        headerBgColor = "#4b5563"; // เทา
         headerTitle = "✖️ ตรวจสอบงาน (ยกเลิกงาน)";
         statusEmoji = "⚪";
       }
@@ -312,7 +316,7 @@
         footer: {
           type: "box",
           layout: "vertical",
-          paddingTop: "8px",
+          paddingTop: "4px",
           paddingBottom: "10px",
           paddingStart: "14px",
           paddingEnd: "14px",
@@ -320,8 +324,9 @@
             {
               type: "box",
               layout: "vertical",
-              backgroundColor: "#f3f4f6",
-              cornerRadius: "8px",
+              cornerRadius: "md",
+              borderWidth: "1.5px",
+              borderColor: headerBgColor,
               paddingTop: "8px",
               paddingBottom: "8px",
               action: { type: "uri", uri: detailUrl },
@@ -402,8 +407,8 @@
           ${ item.solution ? `<div><span class="font-bold">การแก้ไข:</span> ${item.solution}</div>` : '' }
           <div><span class="font-bold">สถานะ:</span> ${item.status || '-'}</div>
         </div>
-        <div class="p-3 bg-slate-50 border-t border-slate-100">
-          <a href="${item.detailUrl || '#'}" target="_blank" class="block w-full py-2 text-center text-xs font-bold rounded-lg bg-slate-200 text-slate-800">
+        <div class="p-3 bg-white border-t border-slate-100">
+          <a href="${item.detailUrl || '#'}" target="_blank" style="border: 1.5px solid ${headerColor}; color: ${headerColor};" class="block w-full py-2 text-center text-xs font-bold rounded-md bg-white">
             เปิด Web App
           </a>
         </div>
