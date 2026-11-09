@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>แชร์การ์ด Defect เข้า LINE</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+  </style>
+</head>
+<body class="bg-slate-100 min-h-screen flex flex-col items-center justify-between p-4">
+
+  <!-- Header -->
+  <header class="w-full max-w-md text-center py-2">
+    <div class="inline-flex items-center space-x-2 bg-white px-4 py-1.5 rounded-full shadow-xs border border-slate-200">
+      <i class="fab fa-line text-emerald-500 text-lg"></i>
+      <span class="text-xs font-semibold text-slate-700">ระบบแชร์การ์ดแจ้งเตือน (ฟรี 100% 0 โควต้า)</span>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="w-full max-w-md flex-1 flex flex-col justify-center items-center my-4">
+    <!-- Status Card -->
+    <div id="statusBox" class="w-full bg-white rounded-2xl shadow-lg border border-slate-100 p-6 text-center transition-all">
+      <div id="spinner" class="inline-block animate-spin rounded-full h-10 w-10 border-4 border-emerald-500 border-t-transparent mb-3"></div>
+      <div id="statusIcon" class="hidden text-4xl mb-2"></div>
+      <h2 id="statusTitle" class="text-base font-bold text-slate-800">กำลังเชื่อมต่อ LINE...</h2>
+      <p id="statusDesc" class="text-xs text-slate-500 mt-1">กรุณารอสักครู่ ระบบกำลังเตรียมการ์ด Flex สำหรับส่งเข้ากลุ่ม</p>
+
+      <!-- Action Buttons -->
+      <div id="actionButtons" class="mt-5 space-y-2 hidden">
+        <button id="btnShareAgain" onclick="triggerShareTargetPicker()" class="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-bold rounded-xl shadow-md transition flex items-center justify-center space-x-2">
+          <i class="fab fa-line text-xl"></i>
+          <span>แตะเพื่อเลือกห้องแชตส่งการ์ด</span>
+        </button>
+        <button onclick="safeCloseWindow()" class="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 active:scale-98 text-slate-600 font-semibold rounded-xl transition text-sm">
+          ปิดหน้าต่างนี้
+        </button>
+      </div>
+    </div>
+
+    <!-- Card Preview Section -->
+    <div id="previewContainer" class="w-full mt-4 hidden">
+      <div class="text-center text-xs font-semibold text-slate-400 mb-2">ตัวอย่างการ์ดที่จะส่งเข้ากลุ่ม (Flex Card):</div>
+      <div id="cardPreview" class="bg-white rounded-2xl shadow border border-slate-200 overflow-hidden text-left">
+        <!-- Dynamic Preview Content -->
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="w-full max-w-md text-center py-2 text-[11px] text-slate-400">
+    Defect Management LIFF Share Gateway • 2026
+  </footer>
+
+  <script>
+    const LIFF_ID = "2012379010-S2Z3XGF9";
+    let defectData = null;
+    let flexCardPayload = null;
+    let hasAttemptedAutoShare = false;
+
+    // 1. Parse Parameters (Hash or Query)
+    function parseParameters() {
+      const urlParams = new URLSearchParams(window.location.search);
+      let dataRaw = urlParams.get("data");
+      
+      // Also check URL Hash if query was stripped by redirects
+      if (!dataRaw && window.location.hash) {
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        dataRaw = hashParams.get("data");
+      }
+
+      if (dataRaw) {
+        try {
+          // Decode URL-encoded or Base64
+          let jsonStr = "";
+          try {
+            jsonStr = decodeURIComponent(escape(atob(dataRaw)));
+          } catch(e) {
+            jsonStr = decodeURIComponent(dataRaw);
+          }
+          return JSON.parse(jsonStr);
+        } catch(err) {
+          console.warn("Data parse error:", err);
+        }
+      }
+
+      // Fallback: Individual Query Parameters
+      return {
+        id: urlParams.get("id") || "",
+        tab: urlParams.get("tab") || "Main",
+        code: urlParams.get("code") || (urlParams.get("id") ? ("No: " + urlParams.get("id")) : ""),
+        status: urlParams.get("status") || "รอการแก้ไข",
+        actionBy: urlParams.get("actionBy") || "-",
+        location: urlParams.get("location") || "-",
+        detail: urlParams.get("detail") || "-",
+        solution: urlParams.get("solution") || "",
+        picBefore: urlParams.get("picBefore") || "",
+        picAfter: urlParams.get("picAfter") || "",
+        detailUrl: urlParams.get("detailUrl") || ""
+      };
+    }
+
+    // 2. Build LINE Flex Card JSON Payload
+    function createFlexCard(item) {
+      const prefix = item.code || (item.tab === "Main" ? "M-" : item.tab === "Control" ? "C-" : item.tab === "Trip" ? "T-" : "") + item.id;
+      const st = String(item.status || "");
+      
+      let headerBgColor = "#dc2626"; // Red (Default)
+      let headerTitle = "📋 แจ้งเปิดงาน Defect";
+      let statusEmoji = "🔴";
+
+      if (item.tab === "Trip") {
+        if (st.includes("ปลด") || st.includes("แก้ไข") || st.includes("ผ่าน")) {
+          headerBgColor = "#10b981";
+          headerTitle = "✅ ปลดทริปเรียบร้อยแล้ว";
+          statusEmoji = "🟢";
+        } else {
+          headerBgColor = "#f59e0b";
+          headerTitle = "⚡ แจ้งเปิดงาน Defect (Trip)";
+          statusEmoji = "🔴";
+        }
+      } else if (st.includes("แก้ไขแล้ว") || st.includes("รอการตรวจสอบ") || st.includes("รอตรวจ")) {
+        headerBgColor = "#3b82f6"; // Blue
+        headerTitle = "🔧 แก้ไขแล้วรอตรวจสอบ";
+        statusEmoji = "🟡";
+      } else if (st.includes("ผ่าน") || st.includes("ปิดงาน") || st.includes("เรียบร้อย")) {
+        headerBgColor = "#10b981"; // Green
+        headerTitle = "✅ ตรวจสอบงานผ่าน Web App";
+        statusEmoji = "🟢";
+      } else if (st.includes("ยกเลิก")) {
+        headerBgColor = "#6b7280"; // Gray
+        headerTitle = "✖️ ตรวจสอบงาน (ยกเลิกงาน)";
+        statusEmoji = "⚪";
+      }
+
+      // Convert Google Drive Links to Direct Images if necessary
+      const formatImageUrl = (url) => {
+        if (!url) return "";
+        let u = String(url).trim();
+        const mImage = u.match(/IMAGE\("([^"]+)"\)/i);
+        if (mImage) u = mImage[1];
+        if (u.includes("drive.google.com/uc") || u.includes("drive.google.com/open")) {
+          const idM = u.match(/[?&]id=([^&]+)/);
+          if (idM) return "https://lh3.googleusercontent.com/d/" + idM[1];
+        }
+        if (u.includes("drive.google.com/file/d/")) {
+          const idM = u.match(/\/file\/d\/([^\/\?]+)/);
+          if (idM) return "https://lh3.googleusercontent.com/d/" + idM[1];
+        }
+        return u.startsWith("https://") ? u : "";
+      };
+
+      const imgBefore = formatImageUrl(item.picBefore);
+      const imgAfter = formatImageUrl(item.picAfter);
+
+      const bodyTextLines = [
+        "No: " + prefix + " [" + (item.tab || "-") + "]",
+        (item.tab === "Trip" ? "Tag: " : "ช่าง: ") + (item.actionBy || "-"),
+        "สถานที่: " + (item.location || "-"),
+        "ปัญหา: " + (item.detail || "-")
+      ];
+      if (item.solution && (st.includes("แก้ไข") || st.includes("ผ่าน"))) {
+        bodyTextLines.push("การแก้ไข: " + item.solution);
+      }
+      bodyTextLines.push("สถานะ: " + statusEmoji + " " + (item.status || "รอการแก้ไข"));
+
+      let imageBox = null;
+      if (imgBefore && imgAfter) {
+        imageBox = {
+          type: "box",
+          layout: "horizontal",
+          spacing: "sm",
+          paddingTop: "6px",
+          paddingStart: "10px",
+          paddingEnd: "10px",
+          contents: [
+            {
+              type: "box",
+              layout: "vertical",
+              flex: 1,
+              contents: [
+                { type: "text", text: "Before", size: "xxs", color: "#6b7280", weight: "bold", align: "center" },
+                { type: "image", url: imgBefore, size: "full", aspectRatio: "4:3", aspectMode: "cover", action: { type: "uri", uri: imgBefore } }
+              ]
+            },
+            {
+              type: "box",
+              layout: "vertical",
+              flex: 1,
+              contents: [
+                { type: "text", text: "After", size: "xxs", color: "#16a34a", weight: "bold", align: "center" },
+                { type: "image", url: imgAfter, size: "full", aspectRatio: "4:3", aspectMode: "cover", action: { type: "uri", uri: imgAfter } }
+              ]
+            }
+          ]
+        };
+      } else if (imgAfter || imgBefore) {
+        const singleUrl = imgAfter || imgBefore;
+        const tagText = imgAfter ? "After" : "Before";
+        const tagColor = imgAfter ? "#16a34a" : "#6b7280";
+        imageBox = {
+          type: "box",
+          layout: "vertical",
+          paddingTop: "6px",
+          paddingStart: "10px",
+          paddingEnd: "10px",
+          contents: [
+            { type: "text", text: tagText, size: "xs", color: tagColor, weight: "bold", align: "center", margin: "none" },
+            { type: "image", url: singleUrl, size: "full", aspectRatio: "4:3", aspectMode: "cover", margin: "xs", action: { type: "uri", uri: singleUrl } }
+          ]
+        };
+      }
+
+      const bodyContents = [];
+      if (imageBox) bodyContents.push(imageBox);
+      bodyContents.push({
+        type: "text",
+        text: bodyTextLines.join("\n"),
+        wrap: true,
+        size: "sm",
+        color: "#1f2937",
+        lineSpacing: "4px",
+        margin: imageBox ? "md" : "none"
+      });
+
+      const detailUrl = item.detailUrl || "https://script.google.com/macros/s/AKfycbx3pSPZncjtAZ29So4g6Yd6n0hR77d7t1buFxdrnb2iWXNRzxRpW4eEoGi7gVWTSbOJzg/exec";
+
+      return {
+        type: "bubble",
+        size: "kilo",
+        header: {
+          type: "box",
+          layout: "vertical",
+          backgroundColor: headerBgColor,
+          paddingTop: "10px",
+          paddingBottom: "10px",
+          paddingStart: "14px",
+          paddingEnd: "14px",
+          contents: [
+            { type: "text", text: headerTitle, color: "#ffffff", weight: "bold", size: "sm" }
+          ]
+        },
+        body: {
+          type: "box",
+          layout: "vertical",
+          paddingTop: "10px",
+          paddingBottom: "10px",
+          paddingStart: "14px",
+          paddingEnd: "14px",
+          contents: bodyContents
+        },
+        footer: {
+          type: "box",
+          layout: "vertical",
+          paddingTop: "8px",
+          paddingBottom: "10px",
+          paddingStart: "14px",
+          paddingEnd: "14px",
+          contents: [
+            {
+              type: "box",
+              layout: "vertical",
+              backgroundColor: "#f3f4f6",
+              cornerRadius: "8px",
+              paddingTop: "8px",
+              paddingBottom: "8px",
+              action: { type: "uri", uri: detailUrl },
+              contents: [
+                { type: "text", text: "เปิด Web App", align: "center", weight: "bold", color: headerBgColor, size: "sm" }
+              ]
+            }
+          ]
+        },
+        styles: {
+          header: { backgroundColor: headerBgColor }
+        }
+      };
+    }
+
+    // 3. Render In-Page Preview
+    function renderPreview(item, flex) {
+      const container = document.getElementById("previewContainer");
+      const preview = document.getElementById("cardPreview");
+      if (!container || !preview) return;
+
+      const prefix = item.code || ("No: " + item.id);
+      const headerColor = flex.styles.header.backgroundColor;
+      const headerTitle = flex.header.contents[0].text;
+      
+      const formatImageUrl = (url) => {
+        if (!url) return "";
+        let u = String(url).trim();
+        const mImage = u.match(/IMAGE\("([^"]+)"\)/i);
+        if (mImage) u = mImage[1];
+        if (u.includes("drive.google.com/uc") || u.includes("drive.google.com/open")) {
+          const idM = u.match(/[?&]id=([^&]+)/);
+          if (idM) return "https://lh3.googleusercontent.com/d/" + idM[1];
+        }
+        if (u.includes("drive.google.com/file/d/")) {
+          const idM = u.match(/\/file\/d\/([^\/\?]+)/);
+          if (idM) return "https://lh3.googleusercontent.com/d/" + idM[1];
+        }
+        return u.startsWith("https://") ? u : "";
+      };
+
+      const imgB = formatImageUrl(item.picBefore);
+      const imgA = formatImageUrl(item.picAfter);
+
+      let imgHtml = "";
+      if (imgB && imgA) {
+        imgHtml = `
+          <div class="grid grid-cols-2 gap-2 p-2">
+            <div>
+              <div class="text-[10px] text-gray-500 font-bold text-center">Before</div>
+              <img src="${imgB}" class="w-full h-24 object-cover rounded-lg">
+            </div>
+            <div>
+              <div class="text-[10px] text-emerald-600 font-bold text-center">After</div>
+              <img src="${imgA}" class="w-full h-24 object-cover rounded-lg">
+            </div>
+          </div>
+        `;
+      } else if (imgB || imgA) {
+        const u = imgA || imgB;
+        imgHtml = `
+          <div class="p-2">
+            <img src="${u}" class="w-full h-32 object-cover rounded-lg">
+          </div>
+        `;
+      }
+
+      preview.innerHTML = `
+        <div style="background-color: ${headerColor}" class="text-white font-bold text-sm px-4 py-2.5">
+          ${headerTitle}
+        </div>
+        ${imgHtml}
+        <div class="p-4 text-xs space-y-1 text-slate-700 font-medium">
+          <div><span class="font-bold">No:</span> ${prefix} [${item.tab || '-'}]</div>
+          <div><span class="font-bold">ช่าง:</span> ${item.actionBy || '-'}</div>
+          <div><span class="font-bold">สถานที่:</span> ${item.location || '-'}</div>
+          <div><span class="font-bold">ปัญหา:</span> ${item.detail || '-'}</div>
+          ${ item.solution ? `<div><span class="font-bold">การแก้ไข:</span> ${item.solution}</div>` : '' }
+          <div><span class="font-bold">สถานะ:</span> ${item.status || '-'}</div>
+        </div>
+        <div class="p-3 bg-slate-50 border-t border-slate-100">
+          <a href="${item.detailUrl || '#'}" target="_blank" class="block w-full py-2 text-center text-xs font-bold rounded-lg bg-slate-200 text-slate-800">
+            เปิด Web App
+          </a>
+        </div>
+      `;
+      container.classList.remove("hidden");
+    }
+
+    // 4. Update UI Status Box
+    function setUIState(state, title, desc, iconHtml) {
+      const spinner = document.getElementById("spinner");
+      const statusIcon = document.getElementById("statusIcon");
+      const statusTitle = document.getElementById("statusTitle");
+      const statusDesc = document.getElementById("statusDesc");
+      const actionButtons = document.getElementById("actionButtons");
+
+      if (state === "loading") {
+        spinner.classList.remove("hidden");
+        statusIcon.classList.add("hidden");
+        actionButtons.classList.add("hidden");
+      } else {
+        spinner.classList.add("hidden");
+        statusIcon.classList.remove("hidden");
+        actionButtons.classList.remove("hidden");
+      }
+
+      if (iconHtml) statusIcon.innerHTML = iconHtml;
+      if (title) statusTitle.innerText = title;
+      if (desc) statusDesc.innerText = desc;
+    }
+
+    function safeCloseWindow() {
+      if (typeof liff !== "undefined" && liff.isInClient && liff.isInClient()) {
+        liff.closeWindow();
+      } else {
+        window.close();
+      }
+    }
+
+    // 5. Trigger Share Target Picker
+    async function triggerShareTargetPicker() {
+      if (!defectData || !flexCardPayload) {
+        alert("ไม่พบข้อมูลการ์ด Defect สำหรับแชร์");
+        return;
+      }
+
+      if (typeof liff === "undefined") {
+        alert("ไม่สามารถติดต่อ LINE SDK ได้");
+        return;
+      }
+
+      if (!liff.isApiAvailable("shareTargetPicker")) {
+        setUIState("error", "ไม่รองรับ Share Target Picker", "กรุณาเปิดลิงก์นี้ในแอปพลิเคชัน LINE บนมือถือเพื่อแชร์การ์ด", "⚠️");
+        return;
+      }
+
+      try {
+        setUIState("loading", "กำลังเปิดหน้าเลือกห้องแชต...", "กรุณาเลือกเพื่อนหรือกลุ่มที่ต้องการส่งการ์ดแจ้งเตือน", "");
+        
+        const altText = (flexCardPayload.header.contents[0].text || "แจ้งเตือนงาน Defect") + ": " + (defectData.code || defectData.id);
+        const res = await liff.shareTargetPicker([
+          {
+            type: "flex",
+            altText: altText,
+            contents: flexCardPayload
+          }
+        ]);
+
+        if (res) {
+          setUIState("success", "แชร์การ์ดเข้าห้องแชตสำเร็จ! 🎉", "ส่งการ์ดแจ้งเตือนเข้าห้องแชต LINE เรียบร้อยแล้ว (ไม่เสียโควต้าข้อความ)", "✅");
+          setTimeout(() => {
+            safeCloseWindow();
+          }, 1800);
+        } else {
+          setUIState("idle", "ยกเลิกการแชร์", "คุณสามารถแตะปุ่มด้านล่างเพื่อเลือกห้องแชตและส่งการ์ดได้อีกครั้ง", "💬");
+        }
+      } catch (err) {
+        console.error("shareTargetPicker Error:", err);
+        setUIState("error", "เกิดข้อผิดพลาดในการแชร์", err.message || String(err), "❌");
+      }
+    }
+
+    // 6. Main Initialization
+    async function init() {
+      try {
+        defectData = parseParameters();
+        if (!defectData || (!defectData.id && !defectData.code)) {
+          setUIState("error", "ไม่พบข้อมูลงาน", "ลิงก์แชร์ไม่สมบูรณ์หรือไม่ระบุรหัสงาน Defect", "⚠️");
+          return;
+        }
+
+        flexCardPayload = createFlexCard(defectData);
+        renderPreview(defectData, flexCardPayload);
+
+        // Initialize LIFF
+        setUIState("loading", "กำลังเชื่อมต่อ LINE...", "เตรียมพร้อมสำหรับการส่งการ์ด Flex", "");
+        await liff.init({ liffId: LIFF_ID });
+
+        if (!liff.isLoggedIn()) {
+          setUIState("loading", "กำลังเข้าสู่ระบบ LINE...", "ระบบจะนำท่านเข้าสู่ระบบเพื่ออนุญาตการแชร์การ์ด", "");
+          liff.login();
+          return;
+        }
+
+        if (!liff.isApiAvailable("shareTargetPicker")) {
+          setUIState("error", "กรุณาเปิดในแอป LINE", "ระบบแชร์การ์ด Flex ต้องเปิดผ่านแอปพลิเคชัน LINE บนมือถือเท่านั้น", "📱");
+          return;
+        }
+
+        // Auto trigger Share Target Picker on first load
+        if (!hasAttemptedAutoShare) {
+          hasAttemptedAutoShare = true;
+          // Short delay for smooth UI transition
+          setTimeout(() => {
+            triggerShareTargetPicker();
+          }, 300);
+        } else {
+          setUIState("idle", "พร้อมแชร์การ์ด", "แตะปุ่มด้านล่างเพื่อเลือกกลุ่มหรือเพื่อนใน LINE", "📋");
+        }
+
+      } catch (err) {
+        console.error("Init Error:", err);
+        setUIState("error", "การเชื่อมต่อขัดข้อง", err.message || String(err), "🚨");
+      }
+    }
+
+    window.onload = init;
+  </script>
+</body>
+</html>
