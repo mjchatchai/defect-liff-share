@@ -65,46 +65,99 @@
     let flexCardPayload = null;
     let hasAttemptedAutoShare = false;
 
-    // 1. Parse Parameters (Hash or Query)
+    function extractParamMap(searchOrQuery) {
+      if (!searchOrQuery) return null;
+      let q = String(searchOrQuery).trim();
+      if (q.startsWith("?")) q = q.substring(1);
+      if (q.startsWith("#")) q = q.substring(1);
+      return new URLSearchParams(q);
+    }
+
+    function decodeDataParam(raw) {
+      if (!raw) return null;
+      try {
+        let jsonStr = "";
+        try {
+          jsonStr = decodeURIComponent(escape(atob(raw)));
+        } catch(e) {
+          jsonStr = decodeURIComponent(raw);
+        }
+        return JSON.parse(jsonStr);
+      } catch(err) {
+        console.warn("decodeDataParam error:", err);
+        return null;
+      }
+    }
+
+    function extractFields(p) {
+      if (!p) return null;
+      const id = p.get("id") || "";
+      const code = p.get("code") || (id ? ("No: " + id) : "");
+      if (!id && !code) return null;
+      return {
+        id: id,
+        tab: p.get("tab") || "Main",
+        code: code,
+        status: p.get("status") || "รอการแก้ไข",
+        actionBy: p.get("actionBy") || p.get("by") || "-",
+        location: p.get("location") || p.get("loc") || "-",
+        detail: p.get("detail") || "-",
+        solution: p.get("solution") || p.get("sol") || "",
+        picBefore: p.get("picBefore") || p.get("picB") || "",
+        picAfter: p.get("picAfter") || p.get("picA") || "",
+        detailUrl: p.get("detailUrl") || ""
+      };
+    }
+
+    // 1. Comprehensive Parameter Parser (Direct, liff.state, or Hash)
     function parseParameters() {
+      // Step A: Check standard location.search
       const urlParams = new URLSearchParams(window.location.search);
       let dataRaw = urlParams.get("data");
-      
-      // Also check URL Hash if query was stripped by redirects
-      if (!dataRaw && window.location.hash) {
-        const hashParams = new URLSearchParams(window.location.hash.substring(1));
-        dataRaw = hashParams.get("data");
+      if (dataRaw) {
+        const res = decodeDataParam(dataRaw);
+        if (res && (res.id || res.code)) return res;
       }
 
-      if (dataRaw) {
+      // Step B: Check liff.state parameter (LINE encapsulates query params here before init)
+      const liffState = urlParams.get("liff.state");
+      if (liffState) {
         try {
-          // Decode URL-encoded or Base64
-          let jsonStr = "";
-          try {
-            jsonStr = decodeURIComponent(escape(atob(dataRaw)));
-          } catch(e) {
-            jsonStr = decodeURIComponent(dataRaw);
+          const decodedState = decodeURIComponent(liffState);
+          const stateParams = extractParamMap(decodedState);
+          if (stateParams) {
+            let stateDataRaw = stateParams.get("data");
+            if (stateDataRaw) {
+              const res = decodeDataParam(stateDataRaw);
+              if (res && (res.id || res.code)) return res;
+            }
+            const fieldsFromState = extractFields(stateParams);
+            if (fieldsFromState) return fieldsFromState;
           }
-          return JSON.parse(jsonStr);
-        } catch(err) {
-          console.warn("Data parse error:", err);
+        } catch(e) {
+          console.warn("liff.state parse error:", e);
         }
       }
 
-      // Fallback: Individual Query Parameters
-      return {
-        id: urlParams.get("id") || "",
-        tab: urlParams.get("tab") || "Main",
-        code: urlParams.get("code") || (urlParams.get("id") ? ("No: " + urlParams.get("id")) : ""),
-        status: urlParams.get("status") || "รอการแก้ไข",
-        actionBy: urlParams.get("actionBy") || "-",
-        location: urlParams.get("location") || "-",
-        detail: urlParams.get("detail") || "-",
-        solution: urlParams.get("solution") || "",
-        picBefore: urlParams.get("picBefore") || "",
-        picAfter: urlParams.get("picAfter") || "",
-        detailUrl: urlParams.get("detailUrl") || ""
-      };
+      // Step C: Check location.hash
+      if (window.location.hash) {
+        const hashParams = extractParamMap(window.location.hash);
+        if (hashParams) {
+          let hashDataRaw = hashParams.get("data");
+          if (hashDataRaw) {
+            const res = decodeDataParam(hashDataRaw);
+            if (res && (res.id || res.code)) return res;
+          }
+          const fieldsFromHash = extractFields(hashParams);
+          if (fieldsFromHash) return fieldsFromHash;
+        }
+      }
+
+      // Step D: Check direct individual parameters (?id=29&tab=Main...)
+      const directFields = extractFields(urlParams);
+      if (directFields) return directFields;
+
+      return null;
     }
 
     // 2. Build LINE Flex Card JSON Payload
@@ -432,21 +485,30 @@
       }
     }
 
-    // 6. Main Initialization
+    // 6. Main Initialization Flow
     async function init() {
       try {
+        setUIState("loading", "กำลังเชื่อมต่อ LINE...", "เตรียมพร้อมสำหรับการส่งการ์ด Flex", "");
+
+        // Step 1: Pre-parse before liff.init (in case already decoded)
         defectData = parseParameters();
+
+        // Step 2: Initialize LIFF (unwraps liff.state automatically)
+        await liff.init({ liffId: LIFF_ID });
+
+        // Step 3: If not found earlier, parse again now that LIFF decoded liff.state
+        if (!defectData) {
+          defectData = parseParameters();
+        }
+
+        // If still not found, check if defect ID is present
         if (!defectData || (!defectData.id && !defectData.code)) {
-          setUIState("error", "ไม่พบข้อมูลงาน", "ลิงก์แชร์ไม่สมบูรณ์หรือไม่ระบุรหัสงาน Defect", "⚠️");
+          setUIState("error", "ไม่พบข้อมูลงาน", "กรุณากดแชร์จากการ์ดงานใน Defect Web App โดยตรง เพื่อส่งการ์ดเข้า LINE ครับ", "⚠️");
           return;
         }
 
         flexCardPayload = createFlexCard(defectData);
         renderPreview(defectData, flexCardPayload);
-
-        // Initialize LIFF
-        setUIState("loading", "กำลังเชื่อมต่อ LINE...", "เตรียมพร้อมสำหรับการส่งการ์ด Flex", "");
-        await liff.init({ liffId: LIFF_ID });
 
         if (!liff.isLoggedIn()) {
           setUIState("loading", "กำลังเข้าสู่ระบบ LINE...", "ระบบจะนำท่านเข้าสู่ระบบเพื่ออนุญาตการแชร์การ์ด", "");
@@ -462,7 +524,6 @@
         // Auto trigger Share Target Picker on first load
         if (!hasAttemptedAutoShare) {
           hasAttemptedAutoShare = true;
-          // Short delay for smooth UI transition
           setTimeout(() => {
             triggerShareTargetPicker();
           }, 300);
