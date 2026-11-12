@@ -54,9 +54,46 @@
 
   <script>
     const LIFF_ID = "2012379010-S2Z3XGF9";
+    const STORAGE_KEY = "pending_defect_share_data";
     let defectData = null;
     let flexCardPayload = null;
     let hasAttemptedAutoShare = false;
+
+    function isOAuthCode(val) {
+      if (!val) return false;
+      // LINE OAuth authorization codes are long alphanumeric strings (e.g. 20+ chars) without hyphens
+      return typeof val === "string" && val.length > 15 && !val.includes("-") && !val.startsWith("No");
+    }
+
+    function savePendingShare(data) {
+      if (!data || (!data.id && !data.code)) return;
+      if (isOAuthCode(data.code)) return;
+      try {
+        const json = JSON.stringify(data);
+        sessionStorage.setItem(STORAGE_KEY, json);
+        localStorage.setItem(STORAGE_KEY, json);
+      } catch(e) {}
+    }
+
+    function getPendingShare() {
+      try {
+        const s = sessionStorage.getItem(STORAGE_KEY) || localStorage.getItem(STORAGE_KEY);
+        if (s) {
+          const obj = JSON.parse(s);
+          if (obj && (obj.id || obj.code) && !isOAuthCode(obj.code)) {
+            return obj;
+          }
+        }
+      } catch(e) {}
+      return null;
+    }
+
+    function clearPendingShare() {
+      try {
+        sessionStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(STORAGE_KEY);
+      } catch(e) {}
+    }
 
     function extractParamMap(searchOrQuery) {
       if (!searchOrQuery) return null;
@@ -75,7 +112,11 @@
         } catch(e) {
           jsonStr = decodeURIComponent(raw);
         }
-        return JSON.parse(jsonStr);
+        const obj = JSON.parse(jsonStr);
+        if (obj && isOAuthCode(obj.code)) {
+          return null;
+        }
+        return obj;
       } catch(err) {
         console.warn("decodeDataParam error:", err);
         return null;
@@ -84,8 +125,16 @@
 
     function extractFields(p) {
       if (!p) return null;
+      // Guard against LINE Login OAuth authorization callback (?code=...&state=...)
+      if (p.has("code") && p.has("state") && !p.has("detail") && !p.has("by") && !p.has("actionBy") && !p.has("data")) {
+        return null;
+      }
+      const rawCode = p.get("code") || "";
+      if (isOAuthCode(rawCode)) {
+        return null;
+      }
       const id = p.get("id") || "";
-      const code = p.get("code") || (id ? ("No: " + id) : "");
+      const code = rawCode || (id ? ("No: " + id) : "");
       if (!id && !code) return null;
       return {
         id: id,
@@ -107,7 +156,7 @@
       let dataRaw = urlParams.get("data");
       if (dataRaw) {
         const res = decodeDataParam(dataRaw);
-        if (res && (res.id || res.code)) return res;
+        if (res && (res.id || res.code) && !isOAuthCode(res.code)) return res;
       }
 
       const liffState = urlParams.get("liff.state");
@@ -119,7 +168,7 @@
             let stateDataRaw = stateParams.get("data");
             if (stateDataRaw) {
               const res = decodeDataParam(stateDataRaw);
-              if (res && (res.id || res.code)) return res;
+              if (res && (res.id || res.code) && !isOAuthCode(res.code)) return res;
             }
             const fieldsFromState = extractFields(stateParams);
             if (fieldsFromState) return fieldsFromState;
@@ -135,7 +184,7 @@
           let hashDataRaw = hashParams.get("data");
           if (hashDataRaw) {
             const res = decodeDataParam(hashDataRaw);
-            if (res && (res.id || res.code)) return res;
+            if (res && (res.id || res.code) && !isOAuthCode(res.code)) return res;
           }
           const fieldsFromHash = extractFields(hashParams);
           if (fieldsFromHash) return fieldsFromHash;
@@ -144,6 +193,10 @@
 
       const directFields = extractFields(urlParams);
       if (directFields) return directFields;
+
+      // Fallback: restore from session/local storage if returning from LINE Login redirect
+      const stored = getPendingShare();
+      if (stored) return stored;
 
       return null;
     }
@@ -448,7 +501,8 @@
         ]);
 
         if (res) {
-          // Sent successfully! Close window instantly!
+          // Sent successfully! Clear pending cache and close window
+          clearPendingShare();
           safeCloseWindow();
         } else {
           // User closed or cancelled: show friendly retry UI
@@ -463,13 +517,20 @@
     async function init() {
       try {
         defectData = parseParameters();
-        await liff.init({ liffId: LIFF_ID });
-
-        if (!defectData) {
-          defectData = parseParameters();
+        if (defectData && (defectData.id || defectData.code) && !isOAuthCode(defectData.code)) {
+          savePendingShare(defectData);
         }
 
-        if (!defectData || (!defectData.id && !defectData.code)) {
+        await liff.init({ liffId: LIFF_ID });
+
+        if (!defectData || (!defectData.id && !defectData.code) || isOAuthCode(defectData.code)) {
+          defectData = parseParameters();
+        }
+        if (!defectData || (!defectData.id && !defectData.code) || isOAuthCode(defectData.code)) {
+          defectData = getPendingShare();
+        }
+
+        if (!defectData || (!defectData.id && !defectData.code) || isOAuthCode(defectData.code)) {
           showFallback("⚠️", "ไม่พบข้อมูลงาน", "กรุณากดแชร์จากการ์ดงานใน Defect Web App ครับ");
           return;
         }
@@ -478,7 +539,8 @@
         renderPreview(defectData, flexCardPayload);
 
         if (!liff.isLoggedIn()) {
-          liff.login();
+          savePendingShare(defectData);
+          liff.login({ redirectUri: window.location.href });
           return;
         }
 
